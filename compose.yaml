@@ -1,0 +1,42 @@
+name: rpm-edge-proxy
+
+services:
+  proxy:
+    image: rpm-edge-proxy:1.1.0
+    build:
+      context: .
+      args:
+        VERSION: "1.1.0"
+    pull_policy: never
+    container_name: rpm-edge-proxy
+    restart: always
+    init: true
+    network_mode: host
+    user: "65534:65534"
+    read_only: true
+    tmpfs:
+      - /tmp:size=16m,mode=1777
+    pids_limit: 64
+    mem_limit: 128m
+    mem_reservation: 32m
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    environment:
+      CAS_PROXY_WATCHDOG_SECONDS: "30"
+    volumes:
+      - ./config/config.json:/config/config.json:ro
+    healthcheck:
+      test: ["CMD", "python", "-m", "cas_proxy", "--check", "http://127.0.0.1:9090/healthz"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: local
+      options:
+        max-size: "10m"
+        max-file: "5"
+        compress: "true"
+    stop_grace_period: 15s

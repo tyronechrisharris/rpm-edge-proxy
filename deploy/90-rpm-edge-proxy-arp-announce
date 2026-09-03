@@ -1,0 +1,25 @@
+#!/bin/sh
+
+network_interface="$1"
+network_action="$2"
+
+if [ "${CONNECTION_ID:-}" != "rpm-edge-proxy" ]; then
+  exit 0
+fi
+case "$network_action" in
+  up|connectivity-change)
+    ;;
+  *)
+    exit 0
+    ;;
+esac
+
+arping_command="$(command -v arping 2>/dev/null || true)"
+if [ -z "$arping_command" ]; then
+  exit 0
+fi
+
+for address in 172.26.0.51 172.26.0.33 172.26.0.65; do
+  "$arping_command" -q -U -I "$network_interface" -c 3 -w 4 "$address" >/dev/null 2>&1 || true
+  "$arping_command" -q -A -I "$network_interface" -c 3 -w 4 "$address" >/dev/null 2>&1 || true
+done
