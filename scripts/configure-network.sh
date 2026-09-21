@@ -30,7 +30,7 @@ nmcli connection modify "$network_profile" \
   connection.autoconnect yes \
   connection.autoconnect-priority 100 \
   ipv4.method manual \
-  ipv4.addresses "172.26.0.51/24,172.26.0.33/24,172.26.0.65/24" \
+  ipv4.addresses "192.168.5.10/24,192.168.2.2/24" \
   ipv4.gateway "" \
   ipv4.dns "" \
   ipv4.ignore-auto-dns yes \
