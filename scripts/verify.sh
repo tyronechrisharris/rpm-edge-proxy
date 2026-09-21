@@ -4,7 +4,7 @@ set -euo pipefail
 network_interface="${1:-eth0}"
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-for address in 172.26.0.51 172.26.0.33 172.26.0.65; do
+for address in 192.168.5.10 192.168.2.2; do
   if ! ip -o -4 address show dev "$network_interface" | awk '{print $4}' | cut -d/ -f1 | grep -Fqx "$address"; then
     echo "FAIL: $address is not assigned to $network_interface" >&2
     exit 1
@@ -31,5 +31,5 @@ if command -v curl >/dev/null 2>&1; then
 fi
 
 echo "Listening sockets:"
-ss -ltnp | awk 'NR == 1 || /172\.26\.0\.(33|65):1600/'
+ss -ltnp | awk 'NR == 1 || /192\.168\.2\.2:1600/'
 echo "Verification passed."

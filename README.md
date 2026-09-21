@@ -1,20 +1,19 @@
 # RPM Edge Proxy
 
-This package provides a dedicated Raspberry Pi gateway for two radiation portal monitor (RPM) TCP data feeds. It does not proxy cameras.
+This package provides a dedicated Raspberry Pi gateway for a radiation portal monitor (RPM) TCP data feed. It does not proxy cameras.
 
 ## Final address plan
 
-The Raspberry Pi uses one physical Ethernet interface with three IPv4 addresses. `172.26.0.51` is the Pi management and upstream source address. `172.26.0.33` and `172.26.0.65` are service addresses that replace the RPMs' old addresses.
+The Raspberry Pi uses one physical Ethernet interface with two IPv4 addresses. `192.168.5.10` is the Pi management and upstream source address. `192.168.2.2` is a service address that replaces the RPM's old address.
 
 | Function | Client-facing listener | Real upstream RPM | Direction |
 | --- | --- | --- | --- |
-| Export Gate Lane 1 | `172.26.0.33:1600` | `172.26.0.32:1600` | RPM to CAS data |
-| Import Gate Lane 2 | `172.26.0.65:1600` | `172.26.0.64:1600` | RPM to CAS data |
-| Pi management/source | `172.26.0.51` | n/a | SSH and outbound source |
+| RPM Proxy | `192.168.2.2:1600` | `192.168.2.3:1600` | RPM to CAS data |
+| Pi management/source | `192.168.5.10` | n/a | SSH and outbound source |
 
-The existing central alarm system (CAS) continues using `172.26.0.33:1600` and `172.26.0.65:1600`; no CAS endpoint change is required.
+The existing central alarm system (CAS) continues using `192.168.2.2:1600`; no CAS endpoint change is required.
 
-This package assumes subnet `172.26.0.0/24`, a wired interface named `eth0`, and no gateway or DNS requirement on this isolated RPM network. Change the prefix or interface in the scripts before deployment if the site differs.
+This package assumes a wired interface named `eth0`, and no gateway or DNS requirement on this isolated RPM network. Change the prefix or interface in the scripts before deployment if the site differs.
 
 ## Proxy behavior
 
@@ -32,8 +31,8 @@ This is a low-latency, soft-real-time TCP relay. It is not a hard-real-time or s
 ## Reliability design
 
 - Raspberry Pi OS Lite 64-bit provides the smallest officially supported Pi operating system footprint.
-- NetworkManager persistently owns `.51`, `.33`, and `.65` and restores them at every boot.
-- A NetworkManager dispatcher announces all three addresses after link activation so neighboring ARP caches learn the Pi's MAC promptly.
+- NetworkManager persistently owns `192.168.5.10` and `192.168.2.2` and restores them at every boot.
+- A NetworkManager dispatcher announces both addresses after link activation so neighboring ARP caches learn the Pi's MAC promptly.
 - Docker host networking lets the unprivileged process bind the original IP addresses and port `1600` directly.
 - `restart: always` restarts the service after a crash and whenever Docker returns after power loss.
 - The proxy maintains each RPM connection internally and detects half-open TCP sessions with keepalive settings.
@@ -50,10 +49,9 @@ For an industrial installation, use a Raspberry Pi Compute Module with eMMC or a
 
 Do these steps from a local keyboard and display. Applying the static profile can disconnect SSH.
 
-1. Back up the two RPM configurations.
-2. Change the Export Gate Lane 1 RPM from `172.26.0.33` to `172.26.0.32`.
-3. Change the Import Gate Lane 2 RPM from `172.26.0.65` to `172.26.0.64`.
-4. Confirm that no device still owns `.33` or `.65`.
+1. Back up the RPM configuration.
+2. Change the RPM from `192.168.2.2` to `192.168.2.3`.
+3. Confirm that no device still owns `192.168.2.2`.
 5. Flash the current Raspberry Pi OS Lite 64-bit release and boot it.
 6. Install Docker Engine with Compose v2, plus `iproute2` and `iputils-arping`.
 7. Copy this directory to the Pi and run:
@@ -95,7 +93,7 @@ sudo /opt/rpm-edge-proxy/scripts/verify.sh eth0
 # Live proxy state and byte counters
 curl http://127.0.0.1:9090/status
 
-# Readiness: HTTP 200 only when both upstream RPMs are connected
+# Readiness: HTTP 200 only when the upstream RPM is connected
 curl --fail http://127.0.0.1:9090/readyz
 
 # Recent bounded logs
@@ -121,4 +119,4 @@ Validate source, configuration, and shell scripts without Docker:
 
 ## Important cutover constraint
 
-Never assign `.33` or `.65` to the Pi while either old RPM still uses that address. Duplicate IP ownership can cause intermittent traffic to reach the wrong MAC address and can appear to work briefly before failing as ARP caches change. The included preflight script blocks installation when it detects such a conflict.
+Never assign `192.168.2.2` to the Pi while the old RPM still uses that address. Duplicate IP ownership can cause intermittent traffic to reach the wrong MAC address and can appear to work briefly before failing as ARP caches change. The included preflight script blocks installation when it detects such a conflict.

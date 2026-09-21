@@ -49,9 +49,7 @@ check_upstream_arp() {
   fi
 }
 
-check_alias_is_free "172.26.0.33"
-check_alias_is_free "172.26.0.65"
-check_upstream_arp "172.26.0.32"
-check_upstream_arp "172.26.0.64"
+check_alias_is_free "192.168.2.2"
+check_upstream_arp "192.168.2.3"
 
-echo "Preflight complete. The installer assumes subnet 172.26.0.0/24."
+echo "Preflight complete."

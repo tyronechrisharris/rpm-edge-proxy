@@ -2,9 +2,9 @@
 
 ## Acceptance checks before connecting the CAS
 
-1. Confirm the Export RPM is `172.26.0.32/24` and the Import RPM is `172.26.0.64/24`.
-2. Confirm `172.26.0.33` and `172.26.0.65` are unused before installing the Pi profile.
-3. Confirm the Pi reports all three addresses on the same wired interface:
+1. Confirm the RPM is `192.168.2.3/24`.
+2. Confirm `192.168.2.2` is unused before installing the Pi profile.
+3. Confirm the Pi reports both addresses on the same wired interface:
 
    ```bash
    ip -4 address show dev eth0
@@ -16,7 +16,7 @@
    ss -ltn | grep ':1600'
    ```
 
-5. Confirm both upstream connections are ready:
+5. Confirm the upstream connection is ready:
 
    ```bash
    curl --fail http://127.0.0.1:9090/readyz
@@ -32,21 +32,21 @@ Perform these tests before declaring the gateway operational:
 
 | Test | Action | Required result |
 | --- | --- | --- |
-| Proxy crash | `docker kill rpm-edge-proxy` | Docker restarts the container automatically; both RPM services reconnect. |
+| Proxy crash | `docker kill rpm-edge-proxy` | Docker restarts the container automatically; the RPM service reconnects. |
 | RPM link interruption | Unplug one RPM network cable for 60 seconds, then reconnect it. | Only that service reports degraded; it reconnects without operator action. |
-| Pi link interruption | Unplug the Pi Ethernet cable for 60 seconds, then reconnect it. | Both services recover and CAS clients reconnect. |
+| Pi link interruption | Unplug the Pi Ethernet cable for 60 seconds, then reconnect it. | The service recovers and CAS clients reconnect. |
 | RPM power cycle | Power-cycle each RPM separately. | The affected service reconnects automatically after the RPM TCP listener returns. |
 | Pi power loss | Remove Pi power for at least 10 seconds, then restore it. | Network aliases and the container return automatically after boot. |
 | Slow/stalled CAS | Disconnect or stop one CAS client. | RPM acquisition and any other CAS client continue; no unbounded queue grows. |
-| Repeated reboot | Reboot the Pi five times. | All five boots restore `.33`, `.65`, and both proxy paths without manual action. |
+| Repeated reboot | Reboot the Pi five times. | All five boots restore `192.168.2.2` and the proxy path without manual action. |
 
 Record recovery time for each test and retain the `/status` output and recent logs.
 
 ## Status interpretation
 
 - `healthz = 200`: the proxy process and event loop can answer locally.
-- `readyz = 200`: both required persistent RPM connections are active.
-- `readyz = 503`: one or both RPMs are disconnected; the process is still retrying automatically.
+- `readyz = 200`: the required persistent RPM connection is active.
+- `readyz = 503`: the RPM is disconnected; the process is still retrying automatically.
 - `active_clients = 0`: no CAS currently consumes that lane.
 - Increasing `bytes_from_upstream` with zero `bytes_to_clients`: RPM data is arriving but no CAS is connected.
 - Increasing `errors` or `reconnects`: inspect cabling, switch ports, RPM power, duplicate addresses, and link negotiation.
@@ -57,13 +57,13 @@ Record recovery time for each test and retain the `/status` output and recent lo
 1. Run `sudo /opt/rpm-edge-proxy/scripts/verify.sh eth0`.
 2. Inspect `curl http://127.0.0.1:9090/status`.
 3. Inspect `docker logs --tail 200 rpm-edge-proxy`.
-4. Confirm all five relevant hosts have unique IP-to-MAC mappings with `ip neigh show dev eth0`.
-5. Confirm `.32` and `.64` respond on the Ethernet segment.
-6. Confirm the container is listening specifically on `.33:1600` and `.65:1600`.
+4. Confirm all three relevant hosts have unique IP-to-MAC mappings with `ip neigh show dev eth0`.
+5. Confirm `192.168.2.3` responds on the Ethernet segment.
+6. Confirm the container is listening specifically on `192.168.2.2:1600`.
 7. Restart only the proxy with `docker restart rpm-edge-proxy`.
 8. Reboot the Pi only if the process and network checks do not recover it.
 
-Do not reassign an RPM to `.33` or `.65` as a troubleshooting shortcut while the Pi is connected.
+Do not reassign an RPM to `192.168.2.2` as a troubleshooting shortcut while the Pi is connected.
 
 To roll back the Pi network profile from a local console, stop the proxy, deactivate `rpm-edge-proxy`, and reactivate the previous NetworkManager connection:
 
