@@ -76,18 +76,16 @@ class ConfigTests(unittest.TestCase):
     def test_production_mapping(self):
         project_dir = Path(__file__).resolve().parents[1]
         config = load_config(project_dir / "config" / "config.json")
-        self.assertEqual(len(config.services), 2)
-        export, import_lane = config.services
-        self.assertEqual(str(export.listen[0]), "172.26.0.33:1600")
-        self.assertEqual(str(export.upstream.endpoint), "172.26.0.32:1600")
-        self.assertEqual(export.upstream.source_ip, "172.26.0.51")
-        self.assertEqual(export.client_writes, "discard")
-        self.assertTrue(export.required)
-        self.assertEqual(str(import_lane.listen[0]), "172.26.0.65:1600")
-        self.assertEqual(str(import_lane.upstream.endpoint), "172.26.0.64:1600")
-        self.assertEqual(import_lane.upstream.source_ip, "172.26.0.51")
-        self.assertEqual(import_lane.client_writes, "discard")
-        self.assertTrue(import_lane.required)
+        self.assertEqual(len(config.services), 1)
+        service = config.services[0]
+        self.assertEqual(service.name, "lane-rpm")
+        self.assertEqual(str(service.listen[0]), "0.0.0.0:1600")
+        self.assertEqual(str(service.upstream.endpoint), "192.168.2.3:1600")
+        self.assertIsNone(service.upstream.source_ip)
+        self.assertEqual(service.client_writes, "discard")
+        self.assertEqual(service.queue_packets, 32)
+        self.assertTrue(service.required)
+        self.assertEqual(str(config.status_listen), "0.0.0.0:9090")
 
 
 if __name__ == "__main__":

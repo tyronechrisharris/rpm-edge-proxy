@@ -3,7 +3,7 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_dir="$(cd "$script_dir/.." && pwd)"
-version="${1:-1.1.0}"
+version="${1:-2.0.0}"
 
 case "$(uname -m)" in
   aarch64|arm64) architecture="arm64" ;;

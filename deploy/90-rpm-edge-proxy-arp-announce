@@ -19,7 +19,7 @@ if [ -z "$arping_command" ]; then
   exit 0
 fi
 
-for address in 172.26.0.51 172.26.0.33 172.26.0.65; do
+for address in 192.168.2.2; do
   "$arping_command" -q -U -I "$network_interface" -c 3 -w 4 "$address" >/dev/null 2>&1 || true
   "$arping_command" -q -A -I "$network_interface" -c 3 -w 4 "$address" >/dev/null 2>&1 || true
 done

@@ -3,7 +3,7 @@ set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 project_dir="$(cd "$script_dir/.." && pwd)"
-version="${1:-1.1.0}"
+version="${1:-2.0.0}"
 image="rpm-edge-proxy"
 dist_dir="$project_dir/dist"
 
@@ -23,6 +23,7 @@ build_bundle() {
 }
 
 build_bundle "linux/arm64" "arm64"
+build_bundle "linux/amd64" "amd64"
 
 if command -v sha256sum >/dev/null 2>&1; then
   (cd "$dist_dir" && sha256sum ./*.tar.gz > SHA256SUMS)

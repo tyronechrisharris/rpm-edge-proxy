@@ -1,71 +1,77 @@
 # Commissioning and Recovery Runbook
 
-## Acceptance checks before connecting the CAS
+## Before startup
 
-1. Confirm the Export RPM is `172.26.0.32/24` and the Import RPM is `172.26.0.64/24`.
-2. Confirm `172.26.0.33` and `172.26.0.65` are unused before installing the Pi profile.
-3. Confirm the Pi reports all three addresses on the same wired interface:
+1. Confirm the real RPM is configured as `192.168.2.3/24` and accepts TCP on port `1600`.
+2. Confirm no other device owns `192.168.2.2`.
+3. Confirm the proxy host has wired address `192.168.2.2/24`.
+4. If Windows also reaches camera `192.168.3.2`, confirm the same adapter retains `192.168.3.99/24` and that both addresses have unique owners.
+5. Keep the Pi and Windows deployments mutually exclusive; there must be exactly one proxy host at `.2`.
+6. Confirm every external consumer is configured to connect to `192.168.2.2:1600`, not directly to `.3`.
 
-   ```bash
-   ip -4 address show dev eth0
-   ```
+On a Pi, run:
 
-4. Confirm the two exact listeners exist:
+```bash
+sudo ./scripts/preflight.sh eth0
+sudo ./scripts/verify.sh eth0
+```
 
-   ```bash
-   ss -ltn | grep ':1600'
-   ```
+On Windows, run from elevated PowerShell:
 
-5. Confirm both upstream connections are ready:
+```powershell
+.\scripts\verify-windows.ps1 -InterfaceAlias "Ethernet"
+```
 
-   ```bash
-   curl --fail http://127.0.0.1:9090/readyz
-   curl http://127.0.0.1:9090/status
-   ```
+## Acceptance test
 
-6. Connect the CAS and confirm the `active_clients` and `bytes_to_clients` counters increase for the correct lane.
-7. Compare several RPM messages at the RPM side and CAS side to confirm byte-for-byte and lane-correct delivery.
+1. Open `http://127.0.0.1:9090/status` on the proxy host.
+2. Confirm `upstream_connected` is `true` and `/readyz` returns HTTP 200.
+3. Start two receiving applications on two separate computers.
+4. Confirm `active_clients` becomes `2`.
+5. Generate a known RPM event and confirm both applications receive the same complete event in the correct order.
+6. Confirm `bytes_from_upstream` and `bytes_to_clients` increase. With two active consumers, the latter should grow at about twice the former.
+7. Record observed event timestamps at the RPM/proxy and both consumers. Establish the acceptable site-specific latency limit before production use.
+
+Do not use `ping` alone as acceptance evidence. It proves IP reachability, not a live TCP feed or byte-for-byte fan-out.
 
 ## Required failure tests
 
-Perform these tests before declaring the gateway operational:
-
 | Test | Action | Required result |
 | --- | --- | --- |
-| Proxy crash | `docker kill rpm-edge-proxy` | Docker restarts the container automatically; both RPM services reconnect. |
-| RPM link interruption | Unplug one RPM network cable for 60 seconds, then reconnect it. | Only that service reports degraded; it reconnects without operator action. |
-| Pi link interruption | Unplug the Pi Ethernet cable for 60 seconds, then reconnect it. | Both services recover and CAS clients reconnect. |
-| RPM power cycle | Power-cycle each RPM separately. | The affected service reconnects automatically after the RPM TCP listener returns. |
-| Pi power loss | Remove Pi power for at least 10 seconds, then restore it. | Network aliases and the container return automatically after boot. |
-| Slow/stalled CAS | Disconnect or stop one CAS client. | RPM acquisition and any other CAS client continue; no unbounded queue grows. |
-| Repeated reboot | Reboot the Pi five times. | All five boots restore `.33`, `.65`, and both proxy paths without manual action. |
-
-Record recovery time for each test and retain the `/status` output and recent logs.
+| Proxy process crash | `docker kill rpm-edge-proxy` | Docker restarts it; the RPM and consumers reconnect. |
+| RPM cable interruption | Unplug the RPM Ethernet cable for 60 seconds, then reconnect. | Readiness becomes degraded, then returns without operator action. |
+| Proxy cable interruption | Unplug the proxy Ethernet cable for 60 seconds, then reconnect. | The listener and upstream recover; consumers reconnect. |
+| RPM power cycle | Power-cycle the RPM. | The proxy reconnects automatically after TCP port `1600` returns. |
+| Proxy host reboot | Reboot the Pi or Windows host. | Address `.2` and the container return automatically. On Windows, confirm Docker Desktop is configured to start at sign-in or as required by site operations. |
+| Slow consumer | Pause one receiver or block its reads while other receivers run. | The slow connection is eventually dropped; other receivers continue. |
+| Multiple consumers | Run all intended receivers simultaneously for at least one hour. | No missing/reordered bytes, unbounded memory growth, or repeated reconnects. |
 
 ## Status interpretation
 
-- `healthz = 200`: the proxy process and event loop can answer locally.
-- `readyz = 200`: both required persistent RPM connections are active.
-- `readyz = 503`: one or both RPMs are disconnected; the process is still retrying automatically.
-- `active_clients = 0`: no CAS currently consumes that lane.
-- Increasing `bytes_from_upstream` with zero `bytes_to_clients`: RPM data is arriving but no CAS is connected.
-- Increasing `errors` or `reconnects`: inspect cabling, switch ports, RPM power, duplicate addresses, and link negotiation.
-- Increasing `dropped_clients`: a CAS client is too slow to consume real-time data.
+- `/healthz = 200`: the process and event loop can answer locally.
+- `/readyz = 200`: the required RPM connection is active.
+- `/readyz = 503`: the process is alive but the RPM is disconnected; retries continue every two seconds.
+- `active_clients = 0`: no receiving application is currently connected.
+- Increasing `bytes_from_upstream` with `active_clients = 0`: live RPM data is arriving but nobody consumes it.
+- `bytes_to_clients` not increasing for one receiver: inspect that receiver and its network path.
+- Increasing `dropped_clients`: one or more consumers cannot keep up.
+- Increasing `errors` or `reconnects`: inspect cabling, power, duplicate IPs, firewall state, and the RPM TCP service.
 
 ## Recovery order
 
-1. Run `sudo /opt/rpm-edge-proxy/scripts/verify.sh eth0`.
-2. Inspect `curl http://127.0.0.1:9090/status`.
-3. Inspect `docker logs --tail 200 rpm-edge-proxy`.
-4. Confirm all five relevant hosts have unique IP-to-MAC mappings with `ip neigh show dev eth0`.
-5. Confirm `.32` and `.64` respond on the Ethernet segment.
-6. Confirm the container is listening specifically on `.33:1600` and `.65:1600`.
-7. Restart only the proxy with `docker restart rpm-edge-proxy`.
-8. Reboot the Pi only if the process and network checks do not recover it.
+1. Check `/status` and `docker logs --tail 200 rpm-edge-proxy`.
+2. Confirm unique IP-to-MAC mappings for `.2` and `.3`.
+3. Confirm the RPM accepts TCP at `192.168.2.3:1600`.
+4. Confirm the proxy host owns `192.168.2.2/24`.
+5. Confirm the container is running and host TCP `192.168.2.2:1600` is reachable.
+6. Restart only the proxy with `docker restart rpm-edge-proxy`.
+7. Reboot the host only if the process and network checks do not recover it.
 
-Do not reassign an RPM to `.33` or `.65` as a troubleshooting shortcut while the Pi is connected.
+No data is retained during an outage. Any regulatory or operational requirement for guaranteed event retention must be met by the RPM or receiving systems, not this relay.
 
-To roll back the Pi network profile from a local console, stop the proxy, deactivate `rpm-edge-proxy`, and reactivate the previous NetworkManager connection:
+## Pi rollback
+
+From a local console:
 
 ```bash
 docker stop rpm-edge-proxy
@@ -74,12 +80,14 @@ nmcli connection show
 sudo nmcli connection up "<previous connection name>"
 ```
 
-## Planned maintenance
+## Windows rollback
 
-Before changing the image or configuration:
+From elevated PowerShell, stop the container and remove only the address/rule installed for this proxy:
 
-1. Copy `/opt/rpm-edge-proxy/config/config.json` and record the current image ID.
-2. Validate the new release on a bench with simulated RPM streams.
-3. Schedule a cutover window and notify CAS operators.
-4. Load the pinned image locally; do not use a floating `latest` tag.
-5. Run the complete failure-test table after the change.
+```powershell
+docker stop rpm-edge-proxy
+Remove-NetFirewallRule -Name "RPMEdgeProxy-TCP-1600"
+Get-NetIPAddress -IPAddress 192.168.2.2 | Remove-NetIPAddress -Confirm
+```
+
+Do not remove `192.168.2.2` if it was already the Windows host's address before this deployment.

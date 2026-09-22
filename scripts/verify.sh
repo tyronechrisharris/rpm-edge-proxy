@@ -4,7 +4,7 @@ set -euo pipefail
 network_interface="${1:-eth0}"
 project_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 
-for address in 172.26.0.51 172.26.0.33 172.26.0.65; do
+for address in 192.168.2.2; do
   if ! ip -o -4 address show dev "$network_interface" | awk '{print $4}' | cut -d/ -f1 | grep -Fqx "$address"; then
     echo "FAIL: $address is not assigned to $network_interface" >&2
     exit 1
@@ -20,10 +20,24 @@ if [[ "$container_status" != "running" ]]; then
   exit 1
 fi
 
+published_listener="$(docker port rpm-edge-proxy 1600/tcp 2>/dev/null || true)"
+if ! grep -Fqx "192.168.2.2:1600" <<<"$published_listener"; then
+  echo "FAIL: container port 1600 is not published as 192.168.2.2:1600" >&2
+  echo "Published value: ${published_listener:-none}" >&2
+  exit 1
+fi
+
+if command -v timeout >/dev/null 2>&1; then
+  if ! timeout 3 bash -c 'exec 3<>/dev/tcp/192.168.2.2/1600'; then
+    echo "FAIL: cannot open the proxy listener at 192.168.2.2:1600" >&2
+    exit 1
+  fi
+fi
+
 if command -v curl >/dev/null 2>&1; then
   echo "Readiness:"
   if ! curl --fail --silent --show-error http://127.0.0.1:9090/readyz; then
-    echo "One or both RPM upstream connections are not ready. Current status:" >&2
+    echo "The RPM upstream connection is not ready. Current status:" >&2
     curl --silent --show-error http://127.0.0.1:9090/status || true
     exit 1
   fi
@@ -31,5 +45,5 @@ if command -v curl >/dev/null 2>&1; then
 fi
 
 echo "Listening sockets:"
-ss -ltnp | awk 'NR == 1 || /172\.26\.0\.(33|65):1600/'
+ss -ltnp | awk 'NR == 1 || /192\.168\.2\.2:1600/'
 echo "Verification passed."
