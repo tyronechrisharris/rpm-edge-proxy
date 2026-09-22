@@ -156,10 +156,17 @@ Validate source, configuration, tests, and shell syntax without starting Docker:
 
 ## Offline images
 
-On an internet-connected machine with Docker Buildx:
+On an internet-connected machine with Docker Buildx, generate both supported offline images:
 
 ```bash
 ./scripts/build-offline-bundles.sh 2.0.0
 ```
 
-This creates ARM64 and AMD64 Linux-container archives plus SHA-256 checksums under `dist/`. The Pi installer automatically loads the ARM64 archive when present. On Windows, load the AMD64 archive with `docker load --input <archive>` and run `install-windows.ps1 -NoBuild`.
+This creates ARM64 and AMD64 Linux-container archives plus SHA-256 checksums under `dist/`. Copy the complete project directory—not only the archive—to the offline destination. The Pi installer automatically loads the ARM64 archive. On Windows, load the AMD64 archive and run the installer without building:
+
+```powershell
+docker load --input .\dist\rpm-edge-proxy-2.0.0-linux-amd64.tar.gz
+.\scripts\install-windows.ps1 -InterfaceAlias "Ethernet" -ConfigureNetwork -NoBuild
+```
+
+Docker Desktop or Docker Engine and the host operating system must already be installed; they are not included in the image archive. See [OFFLINE-INSTALL.md](OFFLINE-INSTALL.md) for artifact selection, checksum verification, transfer, Windows installation, and Raspberry Pi installation.
