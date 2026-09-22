@@ -2,16 +2,18 @@ name: rpm-edge-proxy
 
 services:
   proxy:
-    image: rpm-edge-proxy:1.1.0
+    image: rpm-edge-proxy:2.0.0
     build:
       context: .
       args:
-        VERSION: "1.1.0"
+        VERSION: "2.0.0"
     pull_policy: never
     container_name: rpm-edge-proxy
     restart: always
     init: true
-    network_mode: host
+    ports:
+      - "${RPM_PROXY_BIND_IP:-192.168.2.2}:1600:1600/tcp"
+      - "127.0.0.1:9090:9090/tcp"
     user: "65534:65534"
     read_only: true
     tmpfs:
@@ -24,7 +26,7 @@ services:
     security_opt:
       - no-new-privileges:true
     environment:
-      CAS_PROXY_WATCHDOG_SECONDS: "30"
+      RPM_PROXY_WATCHDOG_SECONDS: "30"
     volumes:
       - ./config/config.json:/config/config.json:ro
     healthcheck:
@@ -40,3 +42,7 @@ services:
         max-file: "5"
         compress: "true"
     stop_grace_period: 15s
+
+networks:
+  default:
+    name: rpm-edge-proxy-network

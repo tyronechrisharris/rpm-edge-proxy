@@ -34,7 +34,7 @@ if [[ "${EUID}" -ne 0 ]]; then
 fi
 if [[ "$apply_network" != "true" ]]; then
   echo "Network activation can disconnect SSH." >&2
-  echo "Run from a local console with --apply-network after both RPMs are readdressed." >&2
+  echo "Run from a local console with --apply-network after confirming the RPM is 192.168.2.3." >&2
   exit 2
 fi
 for command_name in docker nmcli arping ip; do
@@ -58,12 +58,12 @@ find "$install_dir/scripts" -type f -name '*.sh' -exec chmod 0755 {} +
 
 systemctl enable --now docker
 cd "$install_dir"
-offline_archive="$install_dir/dist/rpm-edge-proxy-1.1.0-linux-arm64.tar.gz"
-if ! docker image inspect rpm-edge-proxy:1.1.0 >/dev/null 2>&1 \
+offline_archive="$install_dir/dist/rpm-edge-proxy-2.0.0-linux-arm64.tar.gz"
+if ! docker image inspect rpm-edge-proxy:2.0.0 >/dev/null 2>&1 \
   && [[ -f "$offline_archive" ]]; then
   docker load --input "$offline_archive"
 fi
-if ! docker image inspect rpm-edge-proxy:1.1.0 >/dev/null 2>&1; then
+if ! docker image inspect rpm-edge-proxy:2.0.0 >/dev/null 2>&1; then
   docker compose build
 fi
 

@@ -50,7 +50,9 @@ async def run(config_path: Path) -> None:
         services.append(create_service(service_config, stats))
     status = StatusServer(config.status_listen, registry)
     started = []
-    watchdog_timeout = float(os.environ.get("CAS_PROXY_WATCHDOG_SECONDS", "30"))
+    watchdog_timeout = float(
+        os.environ.get("RPM_PROXY_WATCHDOG_SECONDS", os.environ.get("CAS_PROXY_WATCHDOG_SECONDS", "30"))
+    )
     watchdog = EventLoopWatchdog(watchdog_timeout)
     watchdog.start()
     watchdog_task = asyncio.create_task(watchdog.pulse(), name="event-loop-watchdog-pulse")
@@ -91,7 +93,7 @@ async def run(config_path: Path) -> None:
             loop.add_signal_handler(sig, stop_event.set)
         except NotImplementedError:
             pass
-    LOGGER.info("CAS Edge Proxy %s started with %d service(s)", __version__, len(services))
+    LOGGER.info("RPM Edge Proxy %s started with %d service(s)", __version__, len(services))
     await stop_event.wait()
     LOGGER.info("shutdown requested")
     await status.stop()

@@ -35,7 +35,7 @@ check_alias_is_free() {
     echo "OK: $address is available"
   else
     echo "STOP: another device still answers for $address." >&2
-    echo "Readdress the old RPM and clear this conflict before continuing." >&2
+    echo "Clear this address conflict before continuing." >&2
     exit 3
   fi
 }
@@ -49,9 +49,7 @@ check_upstream_arp() {
   fi
 }
 
-check_alias_is_free "172.26.0.33"
-check_alias_is_free "172.26.0.65"
-check_upstream_arp "172.26.0.32"
-check_upstream_arp "172.26.0.64"
+check_alias_is_free "192.168.2.2"
+check_upstream_arp "192.168.2.3"
 
-echo "Preflight complete. The installer assumes subnet 172.26.0.0/24."
+echo "Preflight complete. The installer assumes subnet 192.168.2.0/24."

@@ -1,8 +1,8 @@
-FROM python:3.13.15-slim-bookworm
+FROM python:3.13.15-slim-bookworm@sha256:2325bb286ec344af3e5898cc224b5844e2707ac6e26b1632516fd3edc84a5e26
 
-ARG VERSION=1.1.0
+ARG VERSION=2.0.0
 LABEL org.opencontainers.image.title="RPM Edge Proxy" \
-      org.opencontainers.image.description="Hardened two-RPM TCP broadcast proxy for an isolated network" \
+      org.opencontainers.image.description="Low-latency TCP fan-out proxy for a radiation portal monitor" \
       org.opencontainers.image.version="${VERSION}"
 
 ENV PYTHONUNBUFFERED=1 \

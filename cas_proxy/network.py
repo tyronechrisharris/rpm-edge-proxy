@@ -330,7 +330,7 @@ class BroadcastProxy:
         self.clients[key] = BroadcastClient(reader=reader, writer=writer, queue=queue, sender=sender)
         self.stats.total_connections += 1
         self.stats.active_clients += 1
-        LOGGER.info("%s accepted CAS client %s", self.config.name, peer)
+        LOGGER.info("%s accepted consumer %s", self.config.name, peer)
         try:
             while True:
                 data = await reader.read(BUFFER_SIZE)
@@ -347,7 +347,7 @@ class BroadcastProxy:
         except asyncio.CancelledError:
             raise
         except Exception as exc:
-            LOGGER.info("%s CAS client %s closed: %s", self.config.name, peer, exc)
+            LOGGER.info("%s consumer %s closed: %s", self.config.name, peer, exc)
         finally:
             self.clients.pop(key, None)
             self.stats.active_clients = max(0, self.stats.active_clients - 1)

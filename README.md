@@ -1,102 +1,121 @@
 # RPM Edge Proxy
 
-This package provides a dedicated Raspberry Pi gateway for two radiation portal monitor (RPM) TCP data feeds. It does not proxy cameras.
+RPM Edge Proxy is a small, dependency-free TCP fan-out service for one radiation portal monitor (RPM). It keeps one persistent connection to the real RPM and copies the byte stream to every connected consumer in real time.
 
-## Final address plan
+```text
+PC / OSCAR #1 ─┐
+PC / OSCAR #2 ─┼── TCP 192.168.2.2:1600 ── proxy ── one TCP connection ── RPM 192.168.2.3:1600
+PC / OSCAR #3 ─┘
+```
 
-The Raspberry Pi uses one physical Ethernet interface with three IPv4 addresses. `172.26.0.51` is the Pi management and upstream source address. `172.26.0.33` and `172.26.0.65` are service addresses that replace the RPMs' old addresses.
+The proxy does not parse, reframe, store, or modify RPM messages. `TCP_NODELAY` is enabled on both sides. Each consumer has its own bounded queue, so a stalled computer is disconnected instead of delaying the live feed for everyone else.
 
-| Function | Client-facing listener | Real upstream RPM | Direction |
-| --- | --- | --- | --- |
-| Export Gate Lane 1 | `172.26.0.33:1600` | `172.26.0.32:1600` | RPM to CAS data |
-| Import Gate Lane 2 | `172.26.0.65:1600` | `172.26.0.64:1600` | RPM to CAS data |
-| Pi management/source | `172.26.0.51` | n/a | SSH and outbound source |
+## Network plan
 
-The existing central alarm system (CAS) continues using `172.26.0.33:1600` and `172.26.0.65:1600`; no CAS endpoint change is required.
+| Device | Address | Purpose |
+| --- | --- | --- |
+| Raspberry Pi or Windows 11 host | `192.168.2.2/24` | Proxy listener |
+| Actual RPM | `192.168.2.3/24` | Upstream TCP server |
+| Consumer computers | `192.168.2.0/24` | Connect to `192.168.2.2:1600` |
+| Windows 11 host, optional second address | `192.168.3.99/24` | Direct route to camera `192.168.3.2` |
 
-This package assumes subnet `172.26.0.0/24`, a wired interface named `eth0`, and no gateway or DNS requirement on this isolated RPM network. Change the prefix or interface in the scripts before deployment if the site differs.
+Only one device may own `192.168.2.2`. Do not run the Pi and Windows deployments at the same time unless one uses a different address and the configuration is deliberately changed.
 
-## Proxy behavior
+## Protocol assumptions
 
-Each configured service:
+This build is intentionally configured for the common data-only arrangement in which:
 
-- opens one persistent TCP connection to its real RPM;
-- immediately forwards received bytes to every connected CAS client without parsing or altering them;
-- discards CAS-to-RPM bytes because this deployment is explicitly data-only;
-- drops slow CAS clients instead of delaying current RPM data;
-- disconnects CAS clients when an upstream fails, so they establish a clean session after recovery;
-- reconnects to an unavailable or rebooted RPM every two seconds.
+- the RPM accepts a TCP connection on port `1600`;
+- the RPM sends its feed without needing commands from each consumer; and
+- consumer-to-RPM writes are not required.
 
-This is a low-latency, soft-real-time TCP relay. It is not a hard-real-time or safety-certified control system. It does not buffer historical data while an RPM or CAS is disconnected.
+Bytes sent by consumers are read and discarded. This prevents several computers from issuing conflicting commands through one RPM connection. If the RPM requires request/response commands, confirm that behavior before deployment; multi-controller arbitration is a different design.
 
-## Reliability design
+This is a soft-real-time relay, not a hard-real-time or safety-certified component. It adds no intentional delay, but end-to-end latency still depends on the RPM, Ethernet, host scheduling, Docker, and each receiving application.
 
-- Raspberry Pi OS Lite 64-bit provides the smallest officially supported Pi operating system footprint.
-- NetworkManager persistently owns `.51`, `.33`, and `.65` and restores them at every boot.
-- A NetworkManager dispatcher announces all three addresses after link activation so neighboring ARP caches learn the Pi's MAC promptly.
-- Docker host networking lets the unprivileged process bind the original IP addresses and port `1600` directly.
-- `restart: always` restarts the service after a crash and whenever Docker returns after power loss.
-- The proxy maintains each RPM connection internally and detects half-open TCP sessions with keepalive settings.
-- An independent in-process watchdog exits if the event loop stalls; Docker then restarts it.
-- The optional systemd hardware watchdog reboots the Pi if the operating system becomes unresponsive.
-- The container filesystem and configuration are read-only, Linux capabilities are dropped, process and memory limits are applied, and log growth is bounded.
-- `/healthz`, `/readyz`, `/status`, and `/metrics` are available only on `127.0.0.1:9090`.
+## Reliability behavior
 
-## Recommended field hardware
+- One persistent upstream connection is shared by all consumers.
+- The proxy retries an unavailable RPM every two seconds.
+- All consumers are disconnected after upstream loss so they reopen a clean TCP session.
+- No historical data is buffered while the RPM or a consumer is disconnected.
+- A newly connected consumer starts with the next live bytes; it may join in the middle of an RPM message and must resynchronize using the RPM protocol's framing.
+- A slow consumer is dropped when its bounded queue fills; current consumers continue.
+- Docker restarts the service after crashes and host reboots.
+- An event-loop watchdog forces a restart if the proxy becomes unresponsive.
+- The status API is available only from the host at `http://127.0.0.1:9090`.
 
-For an industrial installation, use a Raspberry Pi Compute Module with eMMC or a Raspberry Pi 5 booting from a high-endurance SSD. Avoid a consumer microSD card as the long-term system disk. Use wired Ethernet, a ventilated or rated enclosure, and a regulated industrial power supply with UPS or DC hold-up. A single Pi remains a single point of failure; true high availability requires a second independently powered gateway and a controlled floating-IP failover design.
+## Option A: Raspberry Pi
 
-## Deployment sequence
+Use Raspberry Pi OS Lite 64-bit, wired Ethernet, Docker Engine with Compose v2, `iproute2`, and `iputils-arping`. A Pi with eMMC or a high-endurance SSD is preferable to a consumer microSD card for unattended use.
 
-Do these steps from a local keyboard and display. Applying the static profile can disconnect SSH.
+Run the installation from a local keyboard/display because applying `192.168.2.2/24` can disconnect SSH:
 
-1. Back up the two RPM configurations.
-2. Change the Export Gate Lane 1 RPM from `172.26.0.33` to `172.26.0.32`.
-3. Change the Import Gate Lane 2 RPM from `172.26.0.65` to `172.26.0.64`.
-4. Confirm that no device still owns `.33` or `.65`.
-5. Flash the current Raspberry Pi OS Lite 64-bit release and boot it.
-6. Install Docker Engine with Compose v2, plus `iproute2` and `iputils-arping`.
-7. Copy this directory to the Pi and run:
+```bash
+cd /path/to/rpm-edge-proxy
+sudo ./scripts/install-pi.sh --apply-network --interface eth0
+```
 
-   ```bash
-   sudo ./scripts/install-pi.sh --apply-network --interface eth0
-   ```
-
-The installer performs duplicate-address detection before activating the network, copies the deployment to `/opt/rpm-edge-proxy`, enables Docker at boot, installs the hardware-watchdog configuration when `/dev/watchdog` is available, builds or uses the pinned image, starts it, and verifies the listeners.
-
-Reboot once after installation, then verify:
+The installer checks for another owner of `192.168.2.2`, checks for the RPM at `192.168.2.3`, creates a persistent NetworkManager profile, builds or loads the container image, and starts the service. Reboot once and verify:
 
 ```bash
 sudo /opt/rpm-edge-proxy/scripts/verify.sh eth0
 ```
 
-## Offline image workflow
+## Option B: Windows 11 with Docker Desktop
 
-On an internet-connected computer with Docker Buildx, build the ARM64 archive:
+Docker Desktop must be running Linux containers. A dedicated wired RPM adapter is strongly recommended so changing its static address cannot disrupt the Windows management or internet connection. Open PowerShell as Administrator in this directory.
 
-```bash
-./scripts/build-offline-bundles.sh 1.1.0
+Windows can have both `192.168.2.2/24` and `192.168.3.99/24` on the same Ethernet adapter when the RPM and camera are on the same physical Ethernet segment. The proxy uses `.2.2` for the RPM path; `.3.99` remains available for OSCAR to reach camera `.3.2`. Adding `.2.2` does not replace an existing static `.3.99` address. Do not configure a default gateway on either isolated subnet unless the site network design specifically requires one.
+
+If the selected Ethernet adapter already owns `192.168.2.2/24`:
+
+```powershell
+.\scripts\install-windows.ps1 -InterfaceAlias "Ethernet"
 ```
 
-Copy the complete directory, including `dist/rpm-edge-proxy-1.1.0-linux-arm64.tar.gz`, to the Pi, then run the installer:
+If the address is not configured, have the script perform a conflict check and add it:
 
-```bash
-sudo ./scripts/install-pi.sh --apply-network --interface eth0
+```powershell
+.\scripts\install-windows.ps1 -InterfaceAlias "Ethernet" -ConfigureNetwork
 ```
 
-The installer loads the local archive automatically and does not contact an image registry. You can also load the archive manually with `sudo docker load --input <archive>`.
+`-ConfigureNetwork` assigns a manual address and Windows may disable DHCP on that adapter. Use it only for the dedicated RPM LAN; configure the address manually if the adapter also carries other traffic.
+
+The script also creates an inbound Windows Firewall rule for TCP `1600` from the local subnet, builds the image, and starts the proxy. Verify later with:
+
+```powershell
+.\scripts\verify-windows.ps1 -InterfaceAlias "Ethernet"
+```
+
+The separate CAS computer should use `192.168.2.2:1600`. An OSCAR process running directly on Windows can use the same address. If OSCAR runs in another Docker Compose project on the same host, the most direct container-to-container path is to attach its service to `rpm-edge-proxy-network` and use `rpm-edge-proxy:1600`:
+
+```yaml
+services:
+  oscar:
+    networks:
+      - default
+      - rpm_proxy
+
+networks:
+  rpm_proxy:
+    external: true
+    name: rpm-edge-proxy-network
+```
+
+If OSCAR accepts only an IP address, first test `192.168.2.2:1600` from its container; Docker Desktop network behavior can vary by release.
 
 ## Operations
 
 ```bash
-# Overall state
-sudo /opt/rpm-edge-proxy/scripts/verify.sh eth0
+# Process is alive
+curl http://127.0.0.1:9090/healthz
 
-# Live proxy state and byte counters
-curl http://127.0.0.1:9090/status
-
-# Readiness: HTTP 200 only when both upstream RPMs are connected
+# HTTP 200 only while connected to the RPM
 curl --fail http://127.0.0.1:9090/readyz
+
+# Client count, byte counters, reconnects, and errors
+curl http://127.0.0.1:9090/status
 
 # Recent bounded logs
 docker logs --tail 200 rpm-edge-proxy
@@ -105,20 +124,34 @@ docker logs --tail 200 rpm-edge-proxy
 docker restart rpm-edge-proxy
 ```
 
-See `RUNBOOK.md` for commissioning and failure testing. See `SECURITY.md` for the production checklist.
+`active_clients` should match the number of currently connected receiving applications. `bytes_from_upstream` counts each byte once; `bytes_to_clients` counts each delivered copy, so it grows roughly N times faster with N consumers.
+
+See [RUNBOOK.md](RUNBOOK.md) for commissioning and failure tests and [SECURITY.md](SECURITY.md) for production hardening notes.
 
 ## Configuration
 
-The production configuration is `config/config.json`. The filename inside the container remains `/config/config.json`; do not rename it. Unknown JSON fields, malformed addresses, and duplicate listeners stop startup rather than being silently ignored.
+The active configuration is [config/config.json](config/config.json). The application listens on all interfaces *inside* the container; Compose publishes TCP `1600` only on host address `192.168.2.2` and publishes the status port only on host loopback.
 
-The current settings deliberately use `rpm_broadcast` and `client_writes: "discard"`. Do not change to `forward` unless the RPM protocol owner confirms that the CAS must send commands and that multiple controllers are safe.
+For a temporary bench test on a host that does not own `192.168.2.2`, override only the Docker bind address:
 
-Validate source, configuration, and shell scripts without Docker:
+```bash
+RPM_PROXY_BIND_IP=127.0.0.1 docker compose up --build
+```
+
+That override does not change the real upstream RPM address.
+
+Validate source, configuration, tests, and shell syntax without starting Docker:
 
 ```bash
 ./scripts/validate.sh
 ```
 
-## Important cutover constraint
+## Offline images
 
-Never assign `.33` or `.65` to the Pi while either old RPM still uses that address. Duplicate IP ownership can cause intermittent traffic to reach the wrong MAC address and can appear to work briefly before failing as ARP caches change. The included preflight script blocks installation when it detects such a conflict.
+On an internet-connected machine with Docker Buildx:
+
+```bash
+./scripts/build-offline-bundles.sh 2.0.0
+```
+
+This creates ARM64 and AMD64 Linux-container archives plus SHA-256 checksums under `dist/`. The Pi installer automatically loads the ARM64 archive when present. On Windows, load the AMD64 archive with `docker load --input <archive>` and run `install-windows.ps1 -NoBuild`.
