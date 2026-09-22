@@ -88,6 +88,14 @@ The script also creates an inbound Windows Firewall rule for TCP `1600` from the
 .\scripts\verify-windows.ps1 -InterfaceAlias "Ethernet"
 ```
 
+For unattended use, apply the reversible Windows server profile after OSCAR and the proxy containers are running:
+
+```powershell
+.\scripts\configure-windows-server.ps1 -InterfaceAlias "Ethernet"
+```
+
+This prevents sleep and browser/Windows power throttling, defers disruptive update installation, applies container restart policies, and installs a guarded Docker recovery watchdog. Firmware auto-power-on and secure automatic Windows sign-in still require one-time configuration. Follow [WINDOWS-SERVER.md](WINDOWS-SERVER.md) before enabling it.
+
 The separate CAS computer should use `192.168.2.2:1600`. An OSCAR process running directly on Windows can use the same address. If OSCAR runs in another Docker Compose project on the same host, the most direct container-to-container path is to attach its service to `rpm-edge-proxy-network` and use `rpm-edge-proxy:1600`:
 
 ```yaml

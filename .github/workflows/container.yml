@@ -20,6 +20,24 @@ jobs:
           python-version: "3.13"
       - run: python -m unittest discover -s tests -v
       - run: python -m cas_proxy --config config/config.json --validate
+      - name: Validate PowerShell syntax
+        shell: pwsh
+        run: |
+          $failed = $false
+          Get-ChildItem scripts/*.ps1 | ForEach-Object {
+            $tokens = $null
+            $errors = $null
+            [System.Management.Automation.Language.Parser]::ParseFile(
+              $_.FullName,
+              [ref]$tokens,
+              [ref]$errors
+            ) > $null
+            if ($errors.Count) {
+              Write-Error "$($_.Name): $($errors.Message -join '; ')"
+              $failed = $true
+            }
+          }
+          if ($failed) { exit 1 }
 
   image:
     if: github.event_name != 'pull_request'
