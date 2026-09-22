@@ -11,7 +11,9 @@ services:
     container_name: rpm-edge-proxy
     restart: always
     init: true
-    network_mode: host
+    ports:
+      - "1600:1600"
+      - "9090:9090"
     user: "65534:65534"
     read_only: true
     tmpfs:
