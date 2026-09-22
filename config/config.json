@@ -2,18 +2,16 @@
   "version": 1,
   "log_level": "INFO",
   "status": {
-    "listen": "127.0.0.1:9090"
+    "listen": "0.0.0.0:9090"
   },
   "services": [
     {
       "name": "rpm",
       "kind": "rpm_broadcast",
-      "listen": ["192.168.2.2:1600"],
+      "listen": ["0.0.0.0:1600"],
       "upstream": {
-        "address": "192.168.2.3:1600",
-        "source_ip": "192.168.5.10"
+        "address": "192.168.2.3:1600"
       },
-      "allowed_clients": ["192.168.5.0/24"],
       "client_writes": "discard",
       "disconnect_clients_on_upstream_loss": true,
       "connect_timeout_seconds": 3,

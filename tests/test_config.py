@@ -78,9 +78,8 @@ class ConfigTests(unittest.TestCase):
         config = load_config(project_dir / "config" / "config.json")
         self.assertEqual(len(config.services), 1)
         rpm = config.services[0]
-        self.assertEqual(str(rpm.listen[0]), "192.168.2.2:1600")
+        self.assertEqual(str(rpm.listen[0]), "0.0.0.0:1600")
         self.assertEqual(str(rpm.upstream.endpoint), "192.168.2.3:1600")
-        self.assertEqual(rpm.upstream.source_ip, "192.168.5.10")
         self.assertEqual(rpm.client_writes, "discard")
         self.assertTrue(rpm.required)
 

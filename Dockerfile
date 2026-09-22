@@ -17,7 +17,7 @@ USER 65534:65534
 EXPOSE 9090 1600
 
 HEALTHCHECK --interval=10s --timeout=3s --start-period=20s --retries=3 \
-  CMD ["python", "-m", "cas_proxy", "--check", "http://127.0.0.1:9090/healthz"]
+  CMD ["python", "-m", "cas_proxy", "--check", "http://0.0.0.0:9090/healthz"]
 
 ENTRYPOINT ["python", "-m", "cas_proxy"]
 CMD ["--config", "/config/config.json"]
