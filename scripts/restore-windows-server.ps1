@@ -20,7 +20,29 @@ if (-not (Test-Path $statePath -PathType Leaf)) {
 
 New-Item -Path $pausePath -ItemType File -Force | Out-Null
 Unregister-ScheduledTask -TaskName $taskName -Confirm:$false -ErrorAction SilentlyContinue
-& shutdown.exe /a *> $null
+
+# shutdown.exe returns ERROR_NO_SHUTDOWN_IN_PROGRESS (1116) when there is
+# nothing to cancel. That is the normal case during a manual restore and must
+# not stop the script when $ErrorActionPreference is "Stop".
+$savedErrorActionPreference = $ErrorActionPreference
+$shutdownAbortExitCode = $null
+$shutdownAbortError = $null
+try {
+    $ErrorActionPreference = "Continue"
+    & shutdown.exe /a *> $null
+    $shutdownAbortExitCode = $LASTEXITCODE
+} catch {
+    $shutdownAbortError = $_.Exception.Message
+} finally {
+    $ErrorActionPreference = $savedErrorActionPreference
+}
+if ($shutdownAbortError) {
+    Write-Warning "Could not cancel a pending Windows shutdown: $shutdownAbortError Restoration will continue."
+} elseif ($shutdownAbortExitCode -eq 1116) {
+    Write-Verbose "No pending Windows shutdown needed to be cancelled."
+} elseif ($shutdownAbortExitCode -ne 0) {
+    Write-Warning "Windows returned exit code $shutdownAbortExitCode while cancelling a pending shutdown; restoration will continue."
+}
 
 $state = Get-Content $statePath -Raw | ConvertFrom-Json
 
